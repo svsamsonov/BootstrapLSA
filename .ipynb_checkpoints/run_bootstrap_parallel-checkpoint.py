@@ -9,6 +9,8 @@ import pickle
 import time
 from tqdm import tqdm
 
+from concurrent.futures import ProcessPoolExecutor
+
 #aux functions
 def init_pi(N_a,N_s):
     """
@@ -122,7 +124,6 @@ for s0 in range(N_s):
             eps_upd = eps.reshape((-1,1)) @ eps.reshape((1,-1))
             #averaging
             Sigma_eps += pi_states[s0]*Policy[a,s0]*P[s,s0,a]*eps_upd
-print(Sigma_eps)
 
 A_star = np.zeros((N_s,N_s),dtype=float)
 for i in range(N_s):
@@ -151,62 +152,76 @@ for s in range(N_s):
         cur_pol = P[Inds_nz[s,a],s,a]
         Cumulative_state[:,s,a] = cur_pol.cumsum()
 
-def check_independent_last(seed,alpha,s_0,N_traj,n0,N_iters):
-    N_max = 3200
+def run_batch(N_max, n_iters, alpha):
+    V = 5*np.ones((N_max,N_s),dtype=float)
+    results = []
+    for N in range(n_iters):
+        #generate a set of indices
+        s0 = np.random.choice(N_s,  N_max, replace=True, p = pi_states)
+        #sample action
+        #compute policy vectors
+        Prob_vectors = Policy_cumulative[:,s0]
+        a = (Prob_vectors < np.random.rand(1,  N_max)).argmin(axis=0)
+        #sample next state
+        #join state and actio pair 
+        Pr_v = Cumulative_state[:,s0,a]
+        s_inds = (Pr_v < np.random.rand(1,  N_max)).argmin(axis=0)
+        s = Inds_nz[s0,a,s_inds]
+        #calculate J0
+        eps = np.zeros(( N_max,N_s),dtype=float)
+        eps[np.arange( N_max),s0] = R[a,s0] + gamma*V[np.arange(N_max),s]-V[np.arange(N_max),s0]
+        #TD update
+        V += alpha[N]*eps
+        #update PR
+        results.append(V)
+        # if N == n0:
+        #     PR_V[i*N_max:(i+1)*N_max,:] = V
+        # elif N > n0:
+        #     PR_V[i*N_max:(i+1)*N_max,:] = (PR_V[i*N_max:(i+1)*N_max,:]*(N-n0) + V) / (N-n0+1)
+
+    return results
+
+def check_independent_last(seed,alpha,s_0,N_traj,n_iters, num_workers=1):
+    N_max = 2048
+    V_funcs = np.zeros((N_max,N_s),dtype=float)
     np.random.seed(seed)
-    #number of internediate estimates 
-    num_estimates = len(N_iters)
-    #total number of iterations: burn-in plus maximal number of iterations
-    n_iters_max = np.max(N_iters)
-    n_total = n0 + n_iters_max
-    PR_V = np.zeros((num_estimates,N_traj,N_s),dtype=float)
+    #burn-in
+    n0 = n_iters // 2
+    PR_V = np.zeros((N_traj,N_s),dtype=float)
     ###Main loop
     n_loops = N_traj // N_max
-    for i in tqdm(range(n_loops)):
-        V = 5*np.ones((N_max,N_s),dtype=float)
-        ind_elem = 0
-        V_cur = np.zeros_like(V)
-        for N in range(n_total):
-            #generate a set of indices
-            s0 = np.random.choice(N_s,  N_max, replace=True, p = pi_states)
-            #sample action
-            #compute policy vectors
-            Prob_vectors = Policy_cumulative[:,s0]
-            a = (Prob_vectors < np.random.rand(1,  N_max)).argmin(axis=0)
-            #sample next state
-            #join state and actio pair 
-            Pr_v = Cumulative_state[:,s0,a]
-            s_inds = (Pr_v < np.random.rand(1,  N_max)).argmin(axis=0)
-            s = Inds_nz[s0,a,s_inds]
-            #calculate J0
-            eps = np.zeros(( N_max,N_s),dtype=float)
-            eps[np.arange( N_max),s0] = R[a,s0] + gamma*V[np.arange(N_max),s]-V[np.arange(N_max),s0]
-            #TD update
-            V += alpha[N]*eps
-            #update PR
-            if N == n0:
-                V_cur = V
-            elif N > n0:
-                V_cur = (V_cur*(N-n0) + V) / (N-n0+1)
-            if N == n0 + N_iters[ind_elem]:
-                #fill averaged estimates one by one
-                PR_V[ind_elem,i*N_max:(i+1)*N_max,:] = V_cur
-                ind_elem += 1
+    with ProcessPoolExecutor(max_workers=num_workers) as pool:
+        futures = []
+        for i in range(n_loops):
+            futures.append(pool.submit(run_batch, N_max, n_iters, alpha))
+
+        for i, future in tqdm(enumerate(futures), total=len(futures)):
+            results = future.result()
+            for N in range(n_iters):
+                if N == n0:
+                    PR_V[i*N_max:(i+1)*N_max,:] = results[N]
+                elif N > n0:
+                    PR_V[i*N_max:(i+1)*N_max,:] = (PR_V[i*N_max:(i+1)*N_max,:]*(N-n0) + results[N]) / (N-n0+1)
+
     return PR_V
 
 #starting time
 start_time = time.time()
 #start loading parameters
 seed = 2024
-N_traj = 819200
+N_traj = 1638400
 res_last = []
 res_pr = []
 #number of iterations
-N_b = 102400
-N_iters = [200,400,800,1600,3200,6400,12800,25600,51200,102400,204800]
-
-pr_iter = check_independent_last(seed + i,alpha,s0,N_traj,N_b,N_iters)
-res_pr.append(pr_iter)
+# N_iters = [200,400,800,1600,3200,6400,12800,25600,51200,102400,204800,409600,819200,1638400]
+N_iters = [1638400]
+N_iters = np.asarray(N_iters)
+for i in range(len(N_iters)):
+    pr_iter = check_independent_last(seed + i,alpha,s0,N_traj,N_iters[i], num_workers=20)
+    #append strange arrays here
+    #res_last.append(last_iter)
+    res_pr.append(pr_iter)
+    np.save(f"result/PR_V_iter={i},seed={seed+i},alpha={alpha},N_traj={N_traj},N_iters={N_iters[i]}.npy", pr_iter)
 
 np.random.seed(2024)
 #generate random direction
@@ -225,8 +240,8 @@ for i in range(len(N_iters)):
     sample.append(err_proj)
 sample = np.asarray(sample)
 
-sample_pickl = {'description':"Experiments 18.05.2024, step size k^{-1/2}, 819200 trajectories",'samle size':N_iters,'sample':sample}
-with open('res_18_05.pickle', 'wb') as handle:
+sample_pickl = {'description':"Experiments 07.04.2024, step size k^{-1/2}, 819200 trajectories",'samle size':N_iters,'sample':sample}
+with open('res_07_04.pickle', 'wb') as handle:
     pickle.dump(sample_pickl, handle)
 
 all_ks = []
