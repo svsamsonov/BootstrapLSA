@@ -154,7 +154,7 @@ for s in range(N_s):
 def check_independent_last(seed,alpha,s_0,N_traj,n0,N_iters):
     N_max = 3200
     np.random.seed(seed)
-    #number of internediate estimates 
+    #number of intermediate estimates 
     num_estimates = len(N_iters)
     #total number of iterations: burn-in plus maximal number of iterations
     n_iters_max = np.max(N_iters)
@@ -174,9 +174,9 @@ def check_independent_last(seed,alpha,s_0,N_traj,n0,N_iters):
             Prob_vectors = Policy_cumulative[:,s0]
             a = (Prob_vectors < np.random.rand(1,  N_max)).argmin(axis=0)
             #sample next state
-            #join state and actio pair 
-            Pr_v = Cumulative_state[:,s0,a]
-            s_inds = (Pr_v < np.random.rand(1,  N_max)).argmin(axis=0)
+            #join state and action pair 
+            Proba = Cumulative_state[:,s0,a]
+            s_inds = (Proba < np.random.rand(1,  N_max)).argmin(axis=0)
             s = Inds_nz[s0,a,s_inds]
             #calculate J0
             eps = np.zeros(( N_max,N_s),dtype=float)
