@@ -86,7 +86,7 @@ def run_batch(Policy_cumulative,Cumulative_state,pi_states,Inds_nz,num_estimates
     ind_elem = 0
     V_cur = np.zeros_like(V)
     results = np.zeros((num_estimates,N_max,N_s),dtype=float)
-    for N in range(n_total+2):
+    for N in range(n_total+1):
         #generate a set of indices
         s0 = np.random.choice(N_s,  N_max, replace=True, p = pi_states)
         #sample action
@@ -122,6 +122,7 @@ def check_independent_last(seed,Policy_cumulative,Cumulative_state,pi_states,Ind
     #total number of iterations: burn-in plus maximal number of iterations
     n_iters_max = np.max(N_iters)
     n_total = N_b + n_iters_max
+    print("n_total = ",n_total)
     PR_V = np.zeros((num_estimates,N_traj,N_s),dtype=float)
     ###Main loop
     n_loops = N_traj // N_max
@@ -225,7 +226,7 @@ if __name__ == '__main__':
     res_pr = []
     #number of iterations
     N_b = 102400
-    N_iters = [6400,12800,25600,51200,102400]#,204800,409600,819200,1638400]
+    N_iters = [6400,12800,25600,51200,102400,204800]#,409600,819200,1638400]
     #N_iters = [1638400]
     N_iters = np.asarray(N_iters)
     pr_iter = check_independent_last(seed,Policy_cumulative,Cumulative_state,pi_states,Inds_nz,alpha,R,gamma,N_traj,N_b,N_iters,num_workers=16)
