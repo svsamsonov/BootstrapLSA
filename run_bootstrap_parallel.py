@@ -224,8 +224,8 @@ if __name__ == '__main__':
     res_last = []
     res_pr = []
     #number of iterations
-    N_b = 204800
-    N_iters = [200,400,800,1600,3200,6400,12800,25600,51200,102400]#,204800,409600,819200,1638400]
+    N_b = 102400
+    N_iters = [6400,12800,25600,51200,102400]#,204800,409600,819200,1638400]
     #N_iters = [1638400]
     N_iters = np.asarray(N_iters)
     pr_iter = check_independent_last(seed,Policy_cumulative,Cumulative_state,pi_states,Inds_nz,alpha,R,gamma,N_traj,N_b,N_iters,num_workers=16)
